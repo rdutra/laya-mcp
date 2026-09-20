@@ -1,0 +1,38 @@
+import time
+import laya_coreml as laya
+
+print("Loading model...")
+start = time.perf_counter()
+
+agent = laya.load("aac6fef/laya-multilingual-coreml-ane")
+
+print(f"Model loaded in {time.perf_counter() - start:.3f}s")
+
+state = (
+    "player_controller.gd contains movement, jumping, "
+    "acceleration and player animation logic."
+)
+
+questions = {
+    "relevant": {
+        "type": "noul",
+        "instructions":
+            "Is this file relevant to fixing a player movement bug?",
+    }
+}
+
+for i in range(10):
+    start = time.perf_counter()
+
+    result = agent.predict(state, questions)
+
+    elapsed_ms = (time.perf_counter() - start) * 1000
+
+    answer = result["answers"]["relevant"]
+
+    print(
+        f"{i + 1:02}: "
+        f"{elapsed_ms:.2f} ms | "
+        f"confidence={answer['confidence']} | "
+        f"tokens={result['usage']['input_tokens']}"
+    )

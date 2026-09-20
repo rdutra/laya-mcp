@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "laya": {
+      "command": "/absolute/path/to/laya-mcp/.venv/bin/laya-mcp",
+      "args": [],
+      "env": {
+        "LAYA_MCP_MODEL": "aac6fef/laya-multilingual-coreml-ane"
+      }
+    }
+  }
+}
+
