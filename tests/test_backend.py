@@ -115,3 +115,25 @@ async def test_backend_validates_options() -> None:
             DecisionRequest(context="x", question="true?", options=["false", "true"])
         )
 
+
+@pytest.mark.asyncio
+async def test_backend_multi_question_uses_one_predict_call_and_preserves_ids() -> None:
+    agent = FakeAgent(max_length=256)
+    backend = LayaCoreMLBackend(
+        agent=agent,
+        settings=Settings(model="fake/model"),
+        initialization_ms=1.0,
+    )
+    requests = [
+        ("a", DecisionRequest(context="shared", question="First?")),
+        ("b", DecisionRequest(context="shared", question="Second?")),
+    ]
+
+    result = await backend.classify_many("shared", requests)
+
+    assert agent.predict_calls == 1
+    assert [item.id for item in result.results] == ["a", "b"]
+    assert result.model_evaluations == 2
+    assert result.usage.input_tokens == 84
+    assert all(item.result.inference_ms is None for item in result.results)
+    assert backend.info().metrics.inference_count == 2

@@ -22,9 +22,11 @@ class InferenceMetrics:
         self._last_inference_ms: float | None = None
         self._lock = Lock()
 
-    def record_success(self, latency_ms: float) -> None:
+    def record_success(self, latency_ms: float, *, count: int = 1) -> None:
+        if count < 1:
+            raise ValueError("count must be positive")
         with self._lock:
-            self._inference_count += 1
+            self._inference_count += count
             self._last_inference_ms = latency_ms
 
     def record_error(self) -> None:
@@ -43,4 +45,3 @@ class InferenceMetrics:
                     else None
                 ),
             )
-

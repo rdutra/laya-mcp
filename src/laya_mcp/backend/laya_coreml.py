@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from importlib.metadata import version as package_version
-import json
 import logging
 import platform
 from time import perf_counter
@@ -14,10 +13,20 @@ from typing import Any
 from laya_mcp import __version__
 from laya_mcp.config import Settings
 from laya_mcp.metrics import InferenceMetrics
+from laya_mcp.token_budget import (
+    DecisionItem,
+    InputCapacityError,
+    TokenAwarePlanner,
+    TokenBudgetEstimator,
+    serialize_state,
+)
 from laya_mcp.schemas import (
+    BackendBatchResult,
     DecisionRequest,
     DecisionResult,
+    DecisionKind,
     DecisionType,
+    IdentifiedDecisionResult,
     ModelCapabilities,
     RuntimeMetrics,
     ServerInfo,
@@ -27,21 +36,13 @@ from laya_mcp.schemas import (
 logger = logging.getLogger(__name__)
 _QUESTION_ID = "decision"
 
-
-class InputCapacityError(ValueError):
-    """Raised instead of allowing a backend to truncate request content."""
+__all__ = ["InputCapacityError", "LayaCoreMLBackend"]
 
 
 def _default_loader(model: str, **kwargs: Any) -> Any:
     import laya_coreml as laya  # type: ignore[import-untyped]
 
     return laya.load(model, **kwargs)
-
-
-def _serialize_state(state: str | dict[str, Any] | list[Any]) -> str:
-    if isinstance(state, str):
-        return state
-    return json.dumps(state, ensure_ascii=False)
 
 
 class LayaCoreMLBackend:
@@ -54,6 +55,7 @@ class LayaCoreMLBackend:
         self._settings = settings
         self._inference_lock = asyncio.Lock()
         self._metrics = InferenceMetrics(initialization_ms)
+        self._budget = TokenBudgetEstimator(agent)
         self._state = "ready"
 
     @classmethod
@@ -121,64 +123,25 @@ class LayaCoreMLBackend:
         return list(self._agent.tok(text, add_special_tokens=False)["input_ids"])
 
     def _validate_no_truncation(self, request: DecisionRequest) -> int:
-        """Mirror Laya 0.1 prompt budgets and reject every lossy path."""
-        tokenizer = self._agent.tok
-        mask_token = tokenizer.mask_token
-        head_limit = int(self._agent.cfg.get("head_max_len", 192))
-        max_total = min(
-            int(self._agent.cfg.get("max_len", 512)),
-            int(self._agent.shape["max_length"]),
-        )
+        """Reject every lossy path before calling Laya."""
+        item = DecisionItem.from_request(_QUESTION_ID, request)
+        return self._budget.estimate(serialize_state(request.context), item).total_tokens
 
-        head_text = (
-            f"{request.decision_type.value} question: "
-            f"{request.question.replace(mask_token, ' ')}"
-        )
-        head_ids = self._token_ids(head_text)
-        option_ids = [
-            [tokenizer.mask_token_id]
-            + self._token_ids(" " + option.replace(mask_token, " "))
-            for option in self._render_options(request)
-        ]
+    def validate(self, request: DecisionRequest) -> int:
+        """Validate decision semantics and return the exact input token count."""
+        self._question_definition(request)
+        return self._validate_no_truncation(request)
 
-        if any(len(ids) > 49 for ids in option_ids):
-            raise InputCapacityError(
-                "an option exceeds Laya's 48-token option budget; input was not sent"
-            )
-
-        option_budget = head_limit - sum(len(ids) for ids in option_ids)
-        if option_budget < 16:
-            per_option = max(4, (head_limit - 16) // max(1, len(option_ids)))
-            if any(len(ids) > per_option for ids in option_ids):
-                raise InputCapacityError(
-                    "the options exceed Laya's shared question budget; input was not sent"
-                )
-            option_budget = head_limit - sum(len(ids) for ids in option_ids)
-
-        head_capacity = max(8, option_budget)
-        if len(head_ids) > head_capacity:
-            raise InputCapacityError(
-                "the question exceeds Laya's instruction budget; input was not sent"
-            )
-
-        prefix_tokens = 1 + len(head_ids) + 1 + sum(map(len, option_ids)) + 1
-        state_text = _serialize_state(request.context).replace(mask_token, " ")
-        state_tokens = len(self._token_ids(state_text))
-        required = prefix_tokens + state_tokens + 1
-        if required > max_total:
-            raise InputCapacityError(
-                f"request requires {required} tokens but this model supports {max_total}; "
-                "input was not sent and was not truncated"
-            )
-        return required
-
-    def _predict(self, request: DecisionRequest, question: dict[str, Any]) -> DecisionResult:
-        self._validate_no_truncation(request)
-        started = perf_counter()
-        raw = self._agent.predict(request.context, {_QUESTION_ID: question})
-        inference_ms = (perf_counter() - started) * 1000
-        answer = raw["answers"][_QUESTION_ID]
-
+    def _map_answer(
+        self,
+        request: DecisionRequest,
+        answer: dict[str, Any],
+        *,
+        laya_model: str,
+        input_tokens: int,
+        output_tokens: int,
+        inference_ms: float | None,
+    ) -> DecisionResult:
         if request.decision_type is DecisionType.NOUL:
             noul_probability = float(answer["noul"])
             result: bool | str | float = noul_probability >= 0.5
@@ -190,11 +153,10 @@ class LayaCoreMLBackend:
             result = float(answer["score"])
 
         probabilities = answer.get("probabilities")
-        usage = raw.get("usage", {})
-        output = DecisionResult(
+        return DecisionResult(
             backend=self.name,
             model=self._settings.model,
-            laya_model=str(raw.get("model", "unknown")),
+            laya_model=laya_model,
             decision_type=request.decision_type,
             result=result,
             confidence=float(answer["confidence"]),
@@ -214,40 +176,108 @@ class LayaCoreMLBackend:
                 if "legend" in answer
                 else None
             ),
-            usage=TokenUsage(
-                input_tokens=int(usage.get("input_tokens", 0)),
-                output_tokens=int(usage.get("output_tokens", 0)),
-            ),
-            inference_ms=round(inference_ms, 3),
+            usage=TokenUsage(input_tokens=input_tokens, output_tokens=output_tokens),
+            inference_ms=round(inference_ms, 3) if inference_ms is not None else None,
         )
-        self._metrics.record_success(inference_ms)
+
+    def _predict_many(
+        self,
+        context: str,
+        prepared: Sequence[tuple[str, DecisionRequest, dict[str, Any], int]],
+    ) -> BackendBatchResult:
+        started = perf_counter()
+        raw = self._agent.predict(
+            context,
+            {item_id: question for item_id, _, question, _ in prepared},
+        )
+        inference_ms = (perf_counter() - started) * 1000
+        usage = raw.get("usage", {})
+        total_input_tokens = int(usage.get("input_tokens", 0))
+        total_output_tokens = int(usage.get("output_tokens", 0))
+        if total_output_tokens and len(prepared) > 1:
+            raise RuntimeError("backend returned output tokens that cannot be attributed per item")
+        per_item_output_tokens = 0 if total_output_tokens == 0 else total_output_tokens
+        results = [
+            IdentifiedDecisionResult(
+                id=item_id,
+                result=self._map_answer(
+                    request,
+                    raw["answers"][item_id],
+                    laya_model=str(raw.get("model", "unknown")),
+                    input_tokens=(total_input_tokens if len(prepared) == 1 else input_tokens),
+                    output_tokens=per_item_output_tokens if len(prepared) == 1 else 0,
+                    inference_ms=inference_ms if len(prepared) == 1 else None,
+                ),
+            )
+            for item_id, request, _, input_tokens in prepared
+        ]
+        self._metrics.record_success(inference_ms, count=len(prepared))
         logger.info(
             "inference_complete",
             extra={
-                "decision_type": request.decision_type.value,
-                "input_tokens": output.usage.input_tokens,
-                "inference_ms": output.inference_ms,
+                "decision_count": len(prepared),
+                "input_tokens": total_input_tokens,
+                "inference_ms": round(inference_ms, 3),
             },
         )
-        return output
+        return BackendBatchResult(
+            results=results,
+            usage=TokenUsage(
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+            ),
+            inference_ms=round(inference_ms, 3),
+            model_evaluations=len(prepared),
+        )
 
     async def classify(self, request: DecisionRequest) -> DecisionResult:
+        batch = await self.classify_many(request.context, ((_QUESTION_ID, request),))
+        return batch.results[0].result
+
+    async def classify_many(
+        self,
+        context: str,
+        requests: Sequence[tuple[str, DecisionRequest]],
+    ) -> BackendBatchResult:
+        if not requests:
+            raise ValueError("requests must not be empty")
         try:
-            question = self._question_definition(request)
+            ids = [item_id for item_id, _ in requests]
+            if len(set(ids)) != len(ids):
+                raise ValueError("decision IDs must be unique within a backend call")
+            prepared: list[tuple[str, DecisionRequest, dict[str, Any], int]] = []
+            planning_items: list[DecisionItem] = []
+            for item_id, request in requests:
+                if request.context != context:
+                    raise ValueError("all decisions in one backend call must share context")
+                question = self._question_definition(request)
+                planning_item = DecisionItem.from_request(item_id, request)
+                planning_items.append(planning_item)
+                prepared.append((item_id, request, question, 0))
+            planned = TokenAwarePlanner(self._budget).plan(context, planning_items)
+            estimates = {
+                estimate.item_id: estimate.total_tokens
+                for chunk in planned
+                for estimate in chunk.estimates
+            }
+            prepared = [
+                (item_id, request, question, estimates[item_id])
+                for item_id, request, question, _ in prepared
+            ]
             async with self._inference_lock:
-                return await asyncio.to_thread(self._predict, request, question)
+                return await asyncio.to_thread(self._predict_many, context, prepared)
         except ValueError as exc:
             self._metrics.record_error()
             logger.warning(
                 "inference_rejected",
-                extra={"decision_type": request.decision_type.value, "reason": str(exc)},
+                extra={"decision_count": len(requests), "reason": str(exc)},
             )
             raise
         except Exception:
             self._metrics.record_error()
             logger.exception(
                 "inference_failed",
-                extra={"decision_type": request.decision_type.value},
+                extra={"decision_count": len(requests)},
             )
             raise
 
@@ -264,7 +294,7 @@ class LayaCoreMLBackend:
             python_version=platform.python_version(),
             compute_units=str(getattr(self._agent, "compute_units", "unknown")),
             capabilities=ModelCapabilities(
-                decision_types=list(DecisionType),
+                decision_types=list(DecisionKind),
                 max_total_tokens=min(
                     int(self._agent.cfg.get("max_len", 512)),
                     int(shape["max_length"]),

@@ -15,7 +15,19 @@ from laya_mcp import __version__
 from laya_mcp.backend.base import InferenceBackend
 from laya_mcp.backend.laya_coreml import LayaCoreMLBackend
 from laya_mcp.config import Settings
-from laya_mcp.schemas import DecisionRequest, DecisionResult, DecisionType, ServerInfo
+from laya_mcp.schemas import (
+    BatchDecideResponse,
+    BatchDecisionInput,
+    ConfidenceThreshold,
+    DecideInput,
+    DecideResponse,
+    DecisionSpec,
+    FailurePolicy,
+    NonEmptyText,
+    ResponseDetail,
+    ServerInfo,
+)
+from laya_mcp.service import DecisionService
 
 BackendFactory = Callable[[Settings], Awaitable[InferenceBackend]]
 
@@ -43,9 +55,10 @@ def create_server(
         version=__version__,
         description="Persistent local typed decisions powered by Laya-CoreML",
         instructions=(
-            "Use classify for small, bounded noul, choice, or score decisions. "
-            "The server rejects requests that exceed the resident model's token limit; "
-            "call info to inspect the active model and limits."
+            "Use decide for one bounded binary, choice, or ordered-score decision, and "
+            "batch_decide for multiple decisions. The server rejects any question that "
+            "exceeds the resident model's per-question token limit. Call info to inspect "
+            "the active model and limits."
         ),
         lifespan=lifespan,
     )
@@ -72,28 +85,69 @@ def create_server(
             open_world_hint=False,
         ),
     )
-    async def classify(
-        context: str,
-        question: str,
+    async def decide(
+        context: NonEmptyText,
+        question: NonEmptyText,
         ctx: Context[AppContext],
-        decision_type: DecisionType = DecisionType.NOUL,
-        options: list[str] | None = None,
-    ) -> DecisionResult:
-        """Make one bounded typed decision over context using the local resident model.
+        decision: DecisionSpec | None = None,
+        confidence_threshold: ConfidenceThreshold | None = None,
+        request_id: NonEmptyText | None = None,
+    ) -> DecideResponse:
+        """Make one bounded decision using the resident local model.
 
-        Use `noul` for a boolean proposition (no options), `choice` for one label from
-        two or more options, or `score` for an ordered rubric from low to high.
+        Decision kinds are `binary`, `choice`, and `ordered_score`. The server only
+        signals `needs_escalation`; the caller remains responsible for any escalation.
         """
         try:
-            request = DecisionRequest(
+            request = DecideInput(
                 context=context,
                 question=question,
-                decision_type=decision_type,
-                options=options,
+                decision=decision or DecisionSpec(),
+                confidence_threshold=confidence_threshold,
+                request_id=request_id,
             )
-            return await ctx.request_context.lifespan_context.backend.classify(request)
+            service = DecisionService(ctx.request_context.lifespan_context.backend)
+            return await service.decide(request)
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
+        except Exception as exc:
+            raise ToolError(f"decision backend failure: {exc}") from exc
+
+    @server.tool(
+        structured_output=True,
+        annotations=ToolAnnotations(
+            read_only_hint=True,
+            destructive_hint=False,
+            idempotent_hint=True,
+            open_world_hint=False,
+        ),
+    )
+    async def batch_decide(
+        items: list[BatchDecisionInput],
+        ctx: Context[AppContext],
+        shared_context: NonEmptyText | None = None,
+        confidence_threshold: ConfidenceThreshold | None = None,
+        failure_policy: FailurePolicy = FailurePolicy.FAIL_FAST,
+        response_detail: ResponseDetail = ResponseDetail.COMPACT,
+    ) -> BatchDecideResponse:
+        """Make ordered bounded decisions in one MCP request.
+
+        Supply `shared_context` and omit item contexts, or omit `shared_context` and
+        give every item its own context. This is API batching, not parallel inference.
+        """
+        try:
+            service = DecisionService(ctx.request_context.lifespan_context.backend)
+            return await service.batch_decide(
+                items,
+                shared_context=shared_context,
+                confidence_threshold=confidence_threshold,
+                failure_policy=failure_policy,
+                response_detail=response_detail,
+            )
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        except Exception as exc:
+            raise ToolError(f"batch decision backend failure: {exc}") from exc
 
     return server
 

@@ -1,6 +1,6 @@
 # Coding-agent usage
 
-`classify` is intended for small, explicit routing and relevance decisions—not for
+`decide` is intended for small, explicit routing and relevance decisions—not for
 passing entire files to a short-context model.
 
 Good requests contain a compact fact summary and a concrete proposition or label set:
@@ -9,7 +9,7 @@ Good requests contain a compact fact summary and a concrete proposition or label
 {
   "context": "player_controller.gd: movement, jumping, acceleration, animation state",
   "question": "Is this file relevant to a player movement bug?",
-  "decision_type": "noul"
+  "decision": {"kind": "binary"}
 }
 ```
 
@@ -19,12 +19,13 @@ For candidate routing, use `choice`:
 {
   "context": "Failure occurs only while landing after a jump.",
   "question": "Which subsystem is most likely relevant?",
-  "decision_type": "choice",
-  "options": ["movement", "animation", "audio"]
+  "decision": {
+    "kind": "choice",
+    "options": ["movement", "animation", "audio"]
+  }
 }
 ```
 
 Treat confidence as evidence, not authority. Clients decide how to use results and
 must keep deterministic safety, authorization, and correctness checks outside Laya.
 The server never invokes tools, reads files, edits source, or executes commands.
-

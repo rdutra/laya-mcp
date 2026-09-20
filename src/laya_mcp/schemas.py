@@ -1,20 +1,82 @@
-"""Public typed contracts shared by the backend and MCP transport."""
+"""Public decision contracts and internal backend result types."""
 
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DecisionType(str, Enum):
+    """Internal Laya decision names; not exposed by the stable MCP API."""
+
     NOUL = "noul"
     CHOICE = "choice"
     SCORE = "score"
 
 
+class DecisionKind(str, Enum):
+    """Backend-neutral public decision semantics."""
+
+    BINARY = "binary"
+    CHOICE = "choice"
+    ORDERED_SCORE = "ordered_score"
+
+
+class FailurePolicy(str, Enum):
+    FAIL_FAST = "fail_fast"
+    PARTIAL = "partial"
+
+
+class ResponseDetail(str, Enum):
+    COMPACT = "compact"
+    DETAILED = "detailed"
+
+
 NonEmptyText = Annotated[str, Field(min_length=1)]
+ConfidenceThreshold = Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class DecisionSpec(BaseModel):
+    """Public description of the bounded result space."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: DecisionKind = DecisionKind.BINARY
+    options: list[NonEmptyText] | None = None
+
+    @model_validator(mode="after")
+    def validate_options(self) -> DecisionSpec:
+        if self.kind is DecisionKind.BINARY:
+            if self.options is not None:
+                raise ValueError("options must be omitted for a binary decision")
+            return self
+        if self.options is None or len(self.options) < 2:
+            raise ValueError("choice and ordered_score decisions require at least two options")
+        if len(set(self.options)) != len(self.options):
+            raise ValueError("decision options must be unique")
+        return self
+
+
+class DecideInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    context: NonEmptyText
+    question: NonEmptyText
+    decision: DecisionSpec = Field(default_factory=DecisionSpec)
+    confidence_threshold: ConfidenceThreshold | None = None
+    request_id: NonEmptyText | None = None
+
+
+class BatchDecisionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: NonEmptyText
+    question: NonEmptyText
+    context: NonEmptyText | None = None
+    decision: DecisionSpec = Field(default_factory=DecisionSpec)
+    confidence_threshold: ConfidenceThreshold | None = None
 
 
 class DecisionRequest(BaseModel):
@@ -37,17 +99,103 @@ class DecisionResult(BaseModel):
     laya_model: str
     decision_type: DecisionType
     result: bool | str | float
-    confidence: float = Field(ge=0.0, le=1.0)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     probabilities: dict[str, float] | None = None
     noul_probability: float | None = Field(default=None, ge=0.0, le=1.0)
     action_probability: float | None = Field(default=None, ge=0.0, le=1.0)
     legend: dict[str, str] | None = None
     usage: TokenUsage
+    inference_ms: float | None = Field(default=None, ge=0.0)
+
+
+class IdentifiedDecisionResult(BaseModel):
+    id: str
+    result: DecisionResult
+
+
+class BackendBatchResult(BaseModel):
+    results: list[IdentifiedDecisionResult]
+    usage: TokenUsage
     inference_ms: float = Field(ge=0.0)
+    model_evaluations: int = Field(ge=0)
+
+
+class DecisionDetails(BaseModel):
+    """Optional distribution details normalized away from backend-specific keys."""
+
+    probabilities: dict[str, float]
+
+
+class DecideResponse(BaseModel):
+    request_id: str | None = None
+    result: bool | str | float
+    decision_type: DecisionKind
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    needs_escalation: bool
+    details: DecisionDetails | None = None
+    backend: str
+    model: str
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    inference_latency_ms: float | None = Field(default=None, ge=0.0)
+
+
+class BatchItemSuccess(BaseModel):
+    id: str
+    status: Literal["ok"] = "ok"
+    result: bool | str | float
+    decision_type: DecisionKind
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    needs_escalation: bool
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+
+
+class BatchItemDetailedSuccess(BatchItemSuccess):
+    inference_latency_ms: float | None = Field(default=None, ge=0.0)
+    details: DecisionDetails | None = None
+
+
+class BatchItemErrorDetail(BaseModel):
+    code: str
+    message: str
+    retryable: bool
+
+
+class BatchItemError(BaseModel):
+    id: str
+    status: Literal["error"] = "error"
+    error: BatchItemErrorDetail
+
+
+BatchItemResult = BatchItemSuccess | BatchItemDetailedSuccess | BatchItemError
+
+
+class BatchMetrics(BaseModel):
+    decision_count: int = Field(ge=0)
+    successful_count: int = Field(ge=0)
+    failed_count: int = Field(ge=0)
+    escalation_count: int = Field(ge=0)
+    backend_calls: int = Field(ge=0)
+    model_evaluations: int = Field(ge=0)
+    total_input_tokens: int = Field(ge=0)
+    total_output_tokens: int = Field(ge=0)
+    total_inference_latency_ms: float = Field(ge=0.0)
+    total_operation_latency_ms: float = Field(ge=0.0)
+
+
+class BatchDecideResponse(BaseModel):
+    backend: str
+    model: str
+    failure_policy: FailurePolicy
+    response_detail: ResponseDetail
+    items: list[BatchItemResult]
+    metrics: BatchMetrics
 
 
 class ModelCapabilities(BaseModel):
-    decision_types: list[DecisionType]
+    decision_types: list[DecisionKind]
     max_total_tokens: int = Field(gt=0)
     max_options: int = Field(gt=0)
     batch_size: int = Field(gt=0)

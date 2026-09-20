@@ -16,15 +16,20 @@ The core server contains no client-specific behavior. Client examples live under
 
 ## Status
 
-Milestone 1 provides:
+The current server provides:
 
 - one model load per server process through the MCP server lifespan;
-- generic `info` and `classify` tools;
-- `noul`, `choice`, and ordered `score` decisions;
+- a stable generic `info`, `decide`, and `batch_decide` tool surface;
+- public `binary`, `choice`, and `ordered_score` decision semantics;
 - structured confidence, probabilities, token usage, and inference latency;
 - explicit rejection before inference if an input would be truncated;
 - serialized access to the resident Core ML model;
 - JSON logs on stderr, leaving stdout exclusively for MCP stdio messages.
+
+Milestone 2 adds exact Laya 0.1 token accounting, deterministic reusable
+chunk planning, composition/throughput benchmarks, and capability notes. See
+[`docs/laya-capabilities.md`](docs/laya-capabilities.md) and
+[`docs/token-efficiency.md`](docs/token-efficiency.md).
 
 This is alpha software. Laya decisions are probabilistic signals, not authorization,
 safety, legal, medical, or financial judgments.
@@ -69,15 +74,16 @@ Reports the `laya-mcp` and backend versions, configured model, initialization st
 platform, Python version, Core ML compute units, known model limits, and process-local
 metrics. The initialization duration is for this process on this machine.
 
-### `classify`
+### `decide`
 
 Arguments:
 
 - `context`: the small bounded text to evaluate;
 - `question`: the decision instruction;
-- `decision_type`: `noul`, `choice`, or `score`;
-- `options`: omitted for `noul`; at least two labels for `choice` or ordered levels
-  for `score`.
+- `decision`: optional object with `kind` (`binary`, `choice`, or
+  `ordered_score`) and, for non-binary decisions, at least two `options`;
+- `confidence_threshold`: optional number from 0 through 1;
+- `request_id`: optional caller-defined correlation ID.
 
 Example arguments:
 
@@ -85,13 +91,46 @@ Example arguments:
 {
   "context": "player_controller.gd contains movement, jumping, acceleration and player animation logic.",
   "question": "Is this file relevant to fixing a player movement bug?",
-  "decision_type": "noul"
+  "request_id": "decision-17",
+  "confidence_threshold": 0.8
 }
 ```
 
-The result includes the selected result, calibrated confidence, applicable
-probabilities, Laya input/output token counts, and measured synchronous inference
-latency. The server does not read files: clients must provide the bounded context.
+The result includes the normalized result, model confidence, threshold outcome,
+applicable probability distribution, model/backend identifiers, local token usage,
+and measured inference latency.
+
+### `batch_decide`
+
+`batch_decide` accepts ordered items with unique IDs. Use either:
+
+- `shared_context` with item contexts omitted; or
+- an independent `context` on every item with `shared_context` omitted.
+
+The default `fail_fast` policy validates every item before inference and fails the
+whole call if any item is invalid. `partial` returns an explicit error entry in the
+original position for every failed item. No item is silently omitted.
+
+Compact responses are the default and omit probability maps and per-item latency.
+Set `response_detail` to `detailed` when those fields are needed. Backend/model
+identifiers and aggregate metrics appear once at the response envelope.
+
+```json
+{
+  "shared_context": "Choose components relevant to a movement regression.",
+  "confidence_threshold": 0.75,
+  "items": [
+    {"id": "a", "question": "Is the player controller relevant?"},
+    {"id": "b", "question": "Is the audio mixer relevant?"}
+  ]
+}
+```
+
+This is MCP/API batching, not concurrent or fused model inference. The default ANE
+backend evaluates each question independently while holding the same serialization
+lock used by `decide`.
+
+The server does not read files: clients must provide bounded context.
 
 ## Configuration
 
@@ -121,6 +160,14 @@ observation, not a general performance claim.
 python -m pytest
 ```
 
+The real-model benchmark is opt-in and runs only on a compatible Apple Silicon
+machine:
+
+```bash
+python benchmarks/token_composition.py
+python benchmarks/token_efficiency.py --output /tmp/laya-token-efficiency.json
+```
+
 Unit and MCP integration tests use fake backends and do not load model weights. A
 real smoke test should be run on a compatible Apple Silicon Mac before release.
 
@@ -130,11 +177,10 @@ real smoke test should be run on a compatible Apple Silicon Mac before release.
 - no autonomous action loop;
 - no filesystem mutation or command execution;
 - no implicit input truncation;
-- one bounded inference request produces one typed decision;
+- every decision remains bounded and independently token-validated;
 - backend and MCP transport remain separate so other local Laya backends can be added.
 
 ## License
 
 Apache-2.0. Laya-CoreML and model weights are separate dependencies with their own
 licenses, notices, and model cards.
-
