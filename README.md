@@ -182,6 +182,8 @@ inference. These are local observations, not universal performance claims.
 - Claude Code: [`docs/claude-code.md`](docs/claude-code.md)
 - Agent usage patterns: [`docs/coding-agents.md`](docs/coding-agents.md)
 - Evaluation results: [`docs/evaluation.md`](docs/evaluation.md)
+- Synthetic policy-routing evaluation: [`docs/policy-routing-evaluation.md`](docs/policy-routing-evaluation.md)
+- Pre-registered policy-routing criteria: [`evaluation/policy-routing-success-criteria.md`](evaluation/policy-routing-success-criteria.md)
 - Model comparison: [`docs/model-comparison.md`](docs/model-comparison.md)
 - Lifecycle measurements: [`docs/lifecycle.md`](docs/lifecycle.md)
 - Release checklist: [`docs/release.md`](docs/release.md)
@@ -229,7 +231,11 @@ Experimental: `filter`, context-reduction workflows, and agent delegation patter
 Not demonstrated: automatic Codex or Claude token savings, safe silent context
 exclusion, improved coding-agent task quality, or calibrated confidence. See the
 negative results in [`docs/evaluation.md`](evaluation.md) and
-[`docs/codex-evaluation.md`](codex-evaluation.md).
+[`docs/codex-evaluation.md`](codex-evaluation.md). The synthetic policy-routing
+experiment also found that validator-enforced Laya avoided invalid execution but
+did not outperform deterministic Python heuristics; it does not justify production
+policy routing. See [`docs/policy-routing-evaluation.md`](docs/policy-routing-evaluation.md)
+and the raw held-out results in [`evaluation/results/policy-routing/final-json.json`](evaluation/results/policy-routing/final-json.json).
 
 ## License
 

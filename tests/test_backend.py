@@ -35,6 +35,7 @@ async def test_backend_loads_once_and_maps_noul_result() -> None:
     assert first.noul_probability == 0.8125
     assert first.usage.input_tokens == 42
     assert first.usage.output_tokens == 0
+    assert first.inference_ms is not None
     assert first.inference_ms >= 0
     assert second.result is True
     assert backend.info().metrics.inference_count == 2
