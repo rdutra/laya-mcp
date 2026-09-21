@@ -1,0 +1,80 @@
+{
+  "batch_size": 1,
+  "compute_units": "cpu_ne",
+  "context_tokens": 96,
+  "first_inference_ms": 30.006,
+  "initialization_ms": 40193.517,
+  "metadata": {
+    "approx_download_bytes": 557297118,
+    "approx_download_mib": 531.6,
+    "batch_size": 1,
+    "compute_backend": "CPU + Apple Neural Engine",
+    "context_tokens": 96,
+    "decision_capabilities": [
+      "noul",
+      "choice",
+      "score"
+    ],
+    "hardware": "Apple Silicon, macOS 15 / iOS 18 minimum",
+    "id": "aac6fef/laya-multilingual-coreml-ane-w8",
+    "laya_mcp_backend_compatible": true,
+    "parameters": "322M source encoder",
+    "precision": "FP16 graph with grouped-channel 8-bit k-means convolution compression",
+    "quantization": "W8 palette compression for selected convolution operators",
+    "role": "ANE quantization comparison"
+  },
+  "model": "aac6fef/laya-multilingual-coreml-ane-w8",
+  "model_shape": {
+    "batch_size": 1,
+    "flexible": false,
+    "lengths": null,
+    "max_length": 96,
+    "max_options": 32,
+    "min_length": 96
+  },
+  "rss_after_benchmark_bytes_raw": 913276928,
+  "rss_after_load_bytes_raw": 913276928,
+  "rss_before_bytes_raw": 34373632,
+  "rss_delta_after_load_raw": 878903296,
+  "rss_note": "ru_maxrss is platform-dependent; this is a process high-water mark, not an isolated model allocation.",
+  "scale": {
+    "10": {
+      "decisions_per_second": 149.416,
+      "median_ms": 66.927,
+      "per_decision_median_ms": 6.693,
+      "samples_ms": [
+        66.927,
+        67.866,
+        66.575
+      ]
+    },
+    "100": {
+      "decisions_per_second": 146.198,
+      "median_ms": 684.003,
+      "per_decision_median_ms": 6.84,
+      "samples_ms": [
+        723.67,
+        684.003,
+        673.325
+      ]
+    },
+    "50": {
+      "decisions_per_second": 144.129,
+      "median_ms": 346.912,
+      "per_decision_median_ms": 6.938,
+      "samples_ms": [
+        339.895,
+        346.912,
+        366.115
+      ]
+    }
+  },
+  "warm_inference_median_ms": 6.937,
+  "warm_inference_samples_ms": [
+    9.001,
+    6.942,
+    6.761,
+    6.937,
+    6.857
+  ]
+}

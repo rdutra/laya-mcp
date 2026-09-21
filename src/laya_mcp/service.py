@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+import json
 from time import perf_counter
+
+from pydantic import BaseModel
 
 from laya_mcp.backend.base import InferenceBackend
 from laya_mcp.schemas import (
@@ -24,6 +27,14 @@ from laya_mcp.schemas import (
     DecisionResult,
     DecisionType,
     FailurePolicy,
+    FilterCandidate,
+    FilterFailure,
+    FilterInput,
+    FilterItemDetail,
+    FilterMetrics,
+    FilterResponse,
+    FilterStatus,
+    FilterSummary,
     ResponseDetail,
 )
 from laya_mcp.token_budget import ChunkExecutionError, InputCapacityError
@@ -281,3 +292,185 @@ class DecisionService:
                 total_operation_latency_ms=round((perf_counter() - started) * 1000, 3),
             ),
         )
+
+
+def _serialized_bytes(value: object) -> int:
+    payload: object = value
+    if isinstance(value, BaseModel):
+        payload = value.model_dump(mode="json")
+    return len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+class FilterService:
+    """Conservative candidate selection composed from the batch decision primitive."""
+
+    def __init__(self, backend: InferenceBackend) -> None:
+        self._backend = backend
+        self._decisions = DecisionService(backend)
+
+    @staticmethod
+    def _question(candidate: FilterCandidate) -> str:
+        return f"Is this candidate relevant? Candidate: {candidate.text}"
+
+    @staticmethod
+    def _failure_detail(item: BatchItemError) -> FilterItemDetail:
+        status = (
+            FilterStatus.OVERSIZED_RETAINED
+            if item.error.code == "token_budget_exceeded"
+            else FilterStatus.FAILED_RETAINED
+        )
+        return FilterItemDetail(
+            id=item.id,
+            status=status,
+            reason=item.error.code,
+        )
+
+    @staticmethod
+    def _success_detail(
+        item: BatchItemDetailedSuccess,
+        threshold: float,
+    ) -> FilterItemDetail:
+        relevant = item.result if isinstance(item.result, bool) else None
+        if relevant is None:
+            return FilterItemDetail(
+                id=item.id,
+                status=FilterStatus.FAILED_RETAINED,
+                reason="invalid_binary_result",
+            )
+        if item.confidence is None or item.confidence < threshold:
+            status = FilterStatus.UNCERTAIN_RETAINED
+            reason = "confidence_below_rejection_threshold"
+        elif relevant:
+            status = FilterStatus.RETAINED
+            reason = "relevant"
+        else:
+            status = FilterStatus.REJECTED
+            reason = "irrelevant_with_sufficient_confidence"
+        return FilterItemDetail(
+            id=item.id,
+            status=status,
+            relevant=relevant,
+            confidence=item.confidence,
+            needs_escalation=item.needs_escalation,
+            reason=reason,
+            input_tokens=item.input_tokens,
+            output_tokens=item.output_tokens,
+            inference_latency_ms=item.inference_latency_ms,
+        )
+
+    @staticmethod
+    def _failure_record(detail: FilterItemDetail, error: BatchItemError | None) -> FilterFailure:
+        if error is not None:
+            return FilterFailure(
+                id=error.id,
+                code=error.error.code,
+                message=error.error.message,
+            )
+        return FilterFailure(
+            id=detail.id,
+            code=detail.reason,
+            message="candidate was retained because its binary result was invalid",
+        )
+
+    async def filter(self, value: FilterInput) -> FilterResponse:
+        started = perf_counter()
+        batch_items = [
+            BatchDecisionInput(
+                id=candidate.id,
+                question=self._question(candidate),
+            )
+            for candidate in value.candidates
+        ]
+        batch = await self._decisions.batch_decide(
+            batch_items,
+            shared_context=f"Criterion: {value.criterion}",
+            confidence_threshold=value.rejection_threshold,
+            failure_policy=FailurePolicy.PARTIAL,
+            response_detail=ResponseDetail.DETAILED,
+        )
+
+        details_by_id: dict[str, FilterItemDetail] = {}
+        errors_by_id: dict[str, BatchItemError] = {}
+        for item in batch.items:
+            if isinstance(item, BatchItemError):
+                details_by_id[item.id] = self._failure_detail(item)
+                errors_by_id[item.id] = item
+            elif isinstance(item, BatchItemDetailedSuccess):
+                details_by_id[item.id] = self._success_detail(item, value.rejection_threshold)
+            else:
+                details_by_id[item.id] = FilterItemDetail(
+                    id=item.id,
+                    status=FilterStatus.FAILED_RETAINED,
+                    reason="missing_detailed_backend_result",
+                )
+
+        ordered_details = [details_by_id[candidate.id] for candidate in value.candidates]
+        selected = [
+            candidate
+            for candidate in value.candidates
+            if details_by_id[candidate.id].status is not FilterStatus.REJECTED
+        ]
+        failures = [
+            self._failure_record(detail, errors_by_id.get(detail.id))
+            for detail in ordered_details
+            if detail.status in {
+                FilterStatus.FAILED_RETAINED,
+                FilterStatus.OVERSIZED_RETAINED,
+            }
+        ]
+        summary = FilterSummary(
+            input_count=len(value.candidates),
+            selected_count=len(selected),
+            rejected_count=sum(detail.status is FilterStatus.REJECTED for detail in ordered_details),
+            uncertain_retained=sum(
+                detail.status is FilterStatus.UNCERTAIN_RETAINED for detail in ordered_details
+            ),
+            failed_retained=sum(
+                detail.status is FilterStatus.FAILED_RETAINED for detail in ordered_details
+            ),
+            oversized_retained=sum(
+                detail.status is FilterStatus.OVERSIZED_RETAINED for detail in ordered_details
+            ),
+        )
+        metrics = FilterMetrics(
+            candidate_count=len(value.candidates),
+            selected_count=summary.selected_count,
+            rejected_count=summary.rejected_count,
+            uncertain_retained=summary.uncertain_retained,
+            failed_retained=summary.failed_retained,
+            oversized_retained=summary.oversized_retained,
+            model_evaluations=batch.metrics.model_evaluations,
+            backend_calls=batch.metrics.backend_calls,
+            total_input_tokens=batch.metrics.total_input_tokens,
+            total_output_tokens=batch.metrics.total_output_tokens,
+            total_inference_latency_ms=batch.metrics.total_inference_latency_ms,
+            total_operation_latency_ms=round((perf_counter() - started) * 1000, 3),
+            input_payload_bytes=_serialized_bytes(value),
+            output_payload_bytes=0,
+            output_reduction_percent=0.0,
+        )
+        response = FilterResponse(
+            response_detail=value.response_detail,
+            selected=selected,
+            summary=summary,
+            failures=failures,
+            metrics=metrics,
+            details=ordered_details if value.response_detail is ResponseDetail.DETAILED else None,
+        )
+        for _ in range(4):
+            output_bytes = _serialized_bytes(response)
+            reduction = round(
+                (1.0 - output_bytes / metrics.input_payload_bytes) * 100.0
+                if metrics.input_payload_bytes
+                else 0.0,
+                2,
+            )
+            updated = metrics.model_copy(
+                update={
+                    "output_payload_bytes": output_bytes,
+                    "output_reduction_percent": reduction,
+                }
+            )
+            response = response.model_copy(update={"metrics": updated})
+            metrics = updated
+        return response

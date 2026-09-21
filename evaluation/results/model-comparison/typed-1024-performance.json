@@ -1,0 +1,95 @@
+{
+  "batch_size": 1,
+  "compute_units": "cpu_gpu",
+  "context_tokens": 1024,
+  "first_inference_ms": 678.859,
+  "initialization_ms": 59161.663,
+  "metadata": {
+    "approx_download_bytes": 848151894,
+    "approx_download_mib": 808.9,
+    "batch_size": 1,
+    "compute_backend": "CPU + GPU Core ML export",
+    "context_tokens": 1024,
+    "decision_capabilities": [
+      "noul",
+      "choice",
+      "score"
+    ],
+    "hardware": "Apple Silicon, macOS 15 / iOS 18 minimum",
+    "id": "aac6fef/laya-typed-decisions-coreml",
+    "laya_mcp_backend_compatible": true,
+    "parameters": "421M",
+    "precision": "FP16",
+    "quantization": "none",
+    "role": "specialized typed-decisions 1024-token comparison",
+    "training_domain": "English typed-decision workflows"
+  },
+  "model": "aac6fef/laya-typed-decisions-coreml",
+  "model_shape": {
+    "batch_size": 1,
+    "default_length": 128,
+    "flexible": true,
+    "lengths": [
+      16,
+      32,
+      64,
+      96,
+      128,
+      192,
+      256,
+      384,
+      512,
+      768,
+      1024
+    ],
+    "max_length": 1024,
+    "max_options": 32,
+    "min_length": 16,
+    "mode": "enumerated"
+  },
+  "rss_after_benchmark_bytes_raw": 1522122752,
+  "rss_after_load_bytes_raw": 1299644416,
+  "rss_before_bytes_raw": 34603008,
+  "rss_delta_after_load_raw": 1265041408,
+  "rss_note": "ru_maxrss is platform-dependent; this is a process high-water mark, not an isolated model allocation.",
+  "scale": {
+    "10": {
+      "decisions_per_second": 4.112,
+      "median_ms": 2432.139,
+      "per_decision_median_ms": 243.214,
+      "samples_ms": [
+        2434.8,
+        2382.789,
+        2432.139
+      ]
+    },
+    "100": {
+      "decisions_per_second": 3.727,
+      "median_ms": 26831.908,
+      "per_decision_median_ms": 268.319,
+      "samples_ms": [
+        28143.02,
+        26831.908,
+        25609.564
+      ]
+    },
+    "50": {
+      "decisions_per_second": 3.646,
+      "median_ms": 13714.112,
+      "per_decision_median_ms": 274.282,
+      "samples_ms": [
+        12966.481,
+        14292.938,
+        13714.112
+      ]
+    }
+  },
+  "warm_inference_median_ms": 241.523,
+  "warm_inference_samples_ms": [
+    277.674,
+    246.134,
+    238.265,
+    241.214,
+    241.523
+  ]
+}

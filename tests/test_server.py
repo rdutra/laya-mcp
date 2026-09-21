@@ -32,7 +32,12 @@ async def test_public_tools_and_binary_decide_load_once() -> None:
     server = create_server(Settings(model="fake/model"), backend_factory=factory)
     async with Client(server, mode="legacy") as client:
         tools = await client.list_tools()
-        assert {tool.name for tool in tools.tools} == {"batch_decide", "decide", "info"}
+        assert {tool.name for tool in tools.tools} == {
+            "batch_decide",
+            "decide",
+            "filter",
+            "info",
+        }
         assert all(tool.annotations and tool.annotations.read_only_hint for tool in tools.tools)
         result = await client.call_tool(
             "decide",

@@ -194,6 +194,95 @@ class BatchDecideResponse(BaseModel):
     metrics: BatchMetrics
 
 
+class FilterCandidate(BaseModel):
+    """Opaque textual candidate supplied by the caller."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: NonEmptyText
+    text: NonEmptyText
+
+
+class FilterInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    criterion: NonEmptyText
+    candidates: list[FilterCandidate]
+    rejection_threshold: ConfidenceThreshold = 0.9
+    response_detail: ResponseDetail = ResponseDetail.COMPACT
+
+    @model_validator(mode="after")
+    def validate_candidates(self) -> FilterInput:
+        if not self.candidates:
+            raise ValueError("candidates must not be empty")
+        ids = [candidate.id for candidate in self.candidates]
+        if len(set(ids)) != len(ids):
+            raise ValueError("candidate IDs must be unique")
+        return self
+
+
+class FilterStatus(str, Enum):
+    RETAINED = "retained"
+    UNCERTAIN_RETAINED = "uncertain_retained"
+    REJECTED = "rejected"
+    FAILED_RETAINED = "failed_retained"
+    OVERSIZED_RETAINED = "oversized_retained"
+
+
+class FilterFailure(BaseModel):
+    id: str
+    code: str
+    message: str
+
+
+class FilterItemDetail(BaseModel):
+    id: str
+    status: FilterStatus
+    relevant: bool | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    needs_escalation: bool = False
+    reason: str
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    inference_latency_ms: float | None = Field(default=None, ge=0.0)
+
+
+class FilterSummary(BaseModel):
+    input_count: int = Field(ge=0)
+    selected_count: int = Field(ge=0)
+    rejected_count: int = Field(ge=0)
+    uncertain_retained: int = Field(ge=0)
+    failed_retained: int = Field(ge=0)
+    oversized_retained: int = Field(ge=0)
+
+
+class FilterMetrics(BaseModel):
+    candidate_count: int = Field(ge=0)
+    selected_count: int = Field(ge=0)
+    rejected_count: int = Field(ge=0)
+    uncertain_retained: int = Field(ge=0)
+    failed_retained: int = Field(ge=0)
+    oversized_retained: int = Field(ge=0)
+    model_evaluations: int = Field(ge=0)
+    backend_calls: int = Field(ge=0)
+    total_input_tokens: int = Field(ge=0)
+    total_output_tokens: int = Field(ge=0)
+    total_inference_latency_ms: float = Field(ge=0.0)
+    total_operation_latency_ms: float = Field(ge=0.0)
+    input_payload_bytes: int = Field(ge=0)
+    output_payload_bytes: int = Field(ge=0)
+    output_reduction_percent: float
+
+
+class FilterResponse(BaseModel):
+    response_detail: ResponseDetail
+    selected: list[FilterCandidate]
+    summary: FilterSummary
+    failures: list[FilterFailure]
+    metrics: FilterMetrics
+    details: list[FilterItemDetail] | None = None
+
+
 class ModelCapabilities(BaseModel):
     decision_types: list[DecisionKind]
     max_total_tokens: int = Field(gt=0)

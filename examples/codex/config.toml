@@ -1,9 +1,8 @@
 [mcp_servers.laya]
 command = "/absolute/path/to/laya-mcp/.venv/bin/laya-mcp"
 startup_timeout_sec = 90
-tool_timeout_sec = 30
+tool_timeout_sec = 120
 required = true
 
 [mcp_servers.laya.env]
-LAYA_MCP_MODEL = "aac6fef/laya-multilingual-coreml-ane"
-
+LAYA_MCP_MODEL = "aac6fef/laya-multilingual-coreml-ane-w8"

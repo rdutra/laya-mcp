@@ -23,11 +23,14 @@ from laya_mcp.schemas import (
     DecideResponse,
     DecisionSpec,
     FailurePolicy,
+    FilterCandidate,
+    FilterInput,
+    FilterResponse,
     NonEmptyText,
     ResponseDetail,
     ServerInfo,
 )
-from laya_mcp.service import DecisionService
+from laya_mcp.service import DecisionService, FilterService
 
 BackendFactory = Callable[[Settings], Awaitable[InferenceBackend]]
 
@@ -56,9 +59,10 @@ def create_server(
         description="Persistent local typed decisions powered by Laya-CoreML",
         instructions=(
             "Use decide for one bounded binary, choice, or ordered-score decision, and "
-            "batch_decide for multiple decisions. The server rejects any question that "
-            "exceeds the resident model's per-question token limit. Call info to inspect "
-            "the active model and limits."
+            "batch_decide for multiple decisions or filter for conservative candidate "
+            "selection. The server rejects any question that exceeds the resident "
+            "model's per-question token limit. Call info to inspect the active model "
+            "and limits."
         ),
         lifespan=lifespan,
     )
@@ -148,6 +152,43 @@ def create_server(
             raise ToolError(str(exc)) from exc
         except Exception as exc:
             raise ToolError(f"batch decision backend failure: {exc}") from exc
+
+    @server.tool(
+        name="filter",
+        structured_output=True,
+        annotations=ToolAnnotations(
+            read_only_hint=True,
+            destructive_hint=False,
+            idempotent_hint=True,
+            open_world_hint=False,
+        ),
+    )
+    async def filter_candidates(
+        criterion: NonEmptyText,
+        candidates: list[FilterCandidate],
+        ctx: Context[AppContext],
+        rejection_threshold: ConfidenceThreshold = 0.9,
+        response_detail: ResponseDetail = ResponseDetail.COMPACT,
+    ) -> FilterResponse:
+        """Conservatively retain relevant, uncertain, failed, and oversized candidates.
+
+        Only a sufficiently confident irrelevant result excludes a candidate. The
+        default response returns selected candidate text and aggregate metrics; use
+        `detailed` for per-candidate diagnostics.
+        """
+        try:
+            request = FilterInput(
+                criterion=criterion,
+                candidates=candidates,
+                rejection_threshold=rejection_threshold,
+                response_detail=response_detail,
+            )
+            service = FilterService(ctx.request_context.lifespan_context.backend)
+            return await service.filter(request)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        except Exception as exc:
+            raise ToolError(f"filter backend failure: {exc}") from exc
 
     return server
 

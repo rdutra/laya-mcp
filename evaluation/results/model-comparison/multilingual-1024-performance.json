@@ -1,0 +1,94 @@
+{
+  "batch_size": 1,
+  "compute_units": "cpu_gpu",
+  "context_tokens": 1024,
+  "first_inference_ms": 415.594,
+  "initialization_ms": 40120.025,
+  "metadata": {
+    "approx_download_bytes": 679893226,
+    "approx_download_mib": 648.4,
+    "batch_size": 1,
+    "compute_backend": "CPU + GPU Core ML export",
+    "context_tokens": 1024,
+    "decision_capabilities": [
+      "noul",
+      "choice",
+      "score"
+    ],
+    "hardware": "Apple Silicon, macOS 15 / iOS 18 minimum",
+    "id": "aac6fef/laya-multilingual-coreml",
+    "laya_mcp_backend_compatible": true,
+    "parameters": "322M",
+    "precision": "FP16",
+    "quantization": "none",
+    "role": "general multilingual 1024-token comparison"
+  },
+  "model": "aac6fef/laya-multilingual-coreml",
+  "model_shape": {
+    "batch_size": 1,
+    "default_length": 128,
+    "flexible": true,
+    "lengths": [
+      16,
+      32,
+      64,
+      96,
+      128,
+      192,
+      256,
+      384,
+      512,
+      768,
+      1024
+    ],
+    "max_length": 1024,
+    "max_options": 32,
+    "min_length": 16,
+    "mode": "enumerated"
+  },
+  "rss_after_benchmark_bytes_raw": 1125744640,
+  "rss_after_load_bytes_raw": 1125744640,
+  "rss_before_bytes_raw": 34471936,
+  "rss_delta_after_load_raw": 1091272704,
+  "rss_note": "ru_maxrss is platform-dependent; this is a process high-water mark, not an isolated model allocation.",
+  "scale": {
+    "10": {
+      "decisions_per_second": 14.875,
+      "median_ms": 672.27,
+      "per_decision_median_ms": 67.227,
+      "samples_ms": [
+        691.819,
+        649.165,
+        672.27
+      ]
+    },
+    "100": {
+      "decisions_per_second": 14.719,
+      "median_ms": 6794.123,
+      "per_decision_median_ms": 67.941,
+      "samples_ms": [
+        6794.123,
+        6995.461,
+        6615.507
+      ]
+    },
+    "50": {
+      "decisions_per_second": 15.137,
+      "median_ms": 3303.161,
+      "per_decision_median_ms": 66.063,
+      "samples_ms": [
+        3271.386,
+        3377.353,
+        3303.161
+      ]
+    }
+  },
+  "warm_inference_median_ms": 72.398,
+  "warm_inference_samples_ms": [
+    73.161,
+    72.398,
+    72.872,
+    64.602,
+    66.076
+  ]
+}

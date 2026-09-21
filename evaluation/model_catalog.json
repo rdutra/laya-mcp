@@ -1,0 +1,85 @@
+{
+  "source": "Official Laya-CoreML README, model manifests, and Hugging Face blob metadata",
+  "source_urls": [
+    "https://github.com/mizorewww/laya-coreml",
+    "https://huggingface.co/aac6fef"
+  ],
+  "models": [
+    {
+      "id": "aac6fef/laya-multilingual-coreml-ane",
+      "role": "baseline",
+      "context_tokens": 96,
+      "approx_download_bytes": 679922219,
+      "approx_download_mib": 648.5,
+      "parameters": "322M",
+      "precision": "FP16 weights/compute with FP32 host action tensors",
+      "compute_backend": "CPU + Apple Neural Engine",
+      "hardware": "Apple Silicon, macOS 15 / iOS 18 minimum",
+      "decision_capabilities": ["noul", "choice", "score"],
+      "batch_size": 1,
+      "quantization": "none",
+      "laya_mcp_backend_compatible": true
+    },
+    {
+      "id": "aac6fef/laya-multilingual-coreml-ane-w8",
+      "role": "ANE quantization comparison",
+      "context_tokens": 96,
+      "approx_download_bytes": 557297118,
+      "approx_download_mib": 531.6,
+      "parameters": "322M source encoder",
+      "precision": "FP16 graph with grouped-channel 8-bit k-means convolution compression",
+      "compute_backend": "CPU + Apple Neural Engine",
+      "hardware": "Apple Silicon, macOS 15 / iOS 18 minimum",
+      "decision_capabilities": ["noul", "choice", "score"],
+      "batch_size": 1,
+      "quantization": "W8 palette compression for selected convolution operators",
+      "laya_mcp_backend_compatible": true
+    },
+    {
+      "id": "aac6fef/laya-coreml",
+      "role": "general English 512-token comparison",
+      "context_tokens": 512,
+      "approx_download_bytes": 847233970,
+      "approx_download_mib": 808.0,
+      "parameters": "421M",
+      "precision": "FP16",
+      "compute_backend": "CPU + GPU Core ML export",
+      "hardware": "Apple Silicon, macOS 15 / iOS 18 minimum",
+      "decision_capabilities": ["noul", "choice", "score"],
+      "batch_size": 1,
+      "quantization": "none",
+      "laya_mcp_backend_compatible": true
+    },
+    {
+      "id": "aac6fef/laya-multilingual-coreml",
+      "role": "general multilingual 1024-token comparison",
+      "context_tokens": 1024,
+      "approx_download_bytes": 679893226,
+      "approx_download_mib": 648.4,
+      "parameters": "322M",
+      "precision": "FP16",
+      "compute_backend": "CPU + GPU Core ML export",
+      "hardware": "Apple Silicon, macOS 15 / iOS 18 minimum",
+      "decision_capabilities": ["noul", "choice", "score"],
+      "batch_size": 1,
+      "quantization": "none",
+      "laya_mcp_backend_compatible": true
+    },
+    {
+      "id": "aac6fef/laya-typed-decisions-coreml",
+      "role": "specialized typed-decisions 1024-token comparison",
+      "context_tokens": 1024,
+      "approx_download_bytes": 848151894,
+      "approx_download_mib": 808.9,
+      "parameters": "421M",
+      "precision": "FP16",
+      "compute_backend": "CPU + GPU Core ML export",
+      "hardware": "Apple Silicon, macOS 15 / iOS 18 minimum",
+      "decision_capabilities": ["noul", "choice", "score"],
+      "batch_size": 1,
+      "quantization": "none",
+      "training_domain": "English typed-decision workflows",
+      "laya_mcp_backend_compatible": true
+    }
+  ]
+}

@@ -29,7 +29,7 @@ duration before routing work to `decide` or `batch_decide`.
 
 ## Public tools
 
-The stable generic surface is `info`, `decide`, and `batch_decide`. The Milestone 1
+The stable generic surface is `info`, `decide`, `batch_decide`, and `filter`. The Milestone 1
 prototype `classify` tool was removed before the first release rather than preserved
 as a compatibility alias. Internal Laya names such as `noul` are not part of the
 public request contract.
@@ -162,6 +162,41 @@ do not claim token or evaluation metrics that the backend could not confirm.
 Laya 0.1 does not expose a recoverable per-question failure inside an otherwise
 successful call; a missing or malformed answer is therefore treated as a chunk
 failure rather than silently dropping one item.
+
+### `filter`
+
+`filter` is a context-reduction primitive over opaque textual candidates. It accepts
+unique, ordered IDs and text plus one shared criterion:
+
+```json
+{
+  "criterion": "Relevant to fixing player acceleration behavior",
+  "candidates": [
+    {"id": "movement", "text": "player controller handles acceleration"},
+    {"id": "audio", "text": "audio mixer loads music"}
+  ],
+  "rejection_threshold": 0.9,
+  "response_detail": "compact"
+}
+```
+
+The default compact response contains selected candidate objects, aggregate counts,
+visible failures, and measured metrics. It does not contain rejected candidate text
+or a per-candidate classification record. `response_detail: "detailed"` adds an
+ordered diagnostic entry for every candidate (status, confidence, reason, and
+available usage/latency) while retaining the same selected list.
+
+The policy is deliberately asymmetric: a candidate is excluded only when the
+binary result is irrelevant (`false`) and confidence is greater than or equal to
+the threshold. A relevant result is retained; a missing/low confidence result is
+retained as `uncertain_retained`; token-overflow and backend failures are retained
+and listed in `failures`. Equality meets the threshold. The server does not enforce
+a hidden minimum result count, so an all-rejected result is possible when every
+negative is sufficiently confident.
+
+Filtering uses the same shared-context `batch_decide` orchestration and serialized
+backend access. It is API batching, not fused or concurrent inference. See
+[`filtering.md`](filtering.md) for response-size and quality measurements.
 
 ## Confidence and escalation
 

@@ -19,17 +19,19 @@ The core server contains no client-specific behavior. Client examples live under
 The current server provides:
 
 - one model load per server process through the MCP server lifespan;
-- a stable generic `info`, `decide`, and `batch_decide` tool surface;
+- a stable generic `info`, `decide`, `batch_decide`, and conservative `filter` tool surface;
 - public `binary`, `choice`, and `ordered_score` decision semantics;
 - structured confidence, probabilities, token usage, and inference latency;
 - explicit rejection before inference if an input would be truncated;
 - serialized access to the resident Core ML model;
 - JSON logs on stderr, leaving stdout exclusively for MCP stdio messages.
 
-Milestone 2 adds exact Laya 0.1 token accounting, deterministic reusable
-chunk planning, composition/throughput benchmarks, and capability notes. See
+Milestones 2–4 add exact Laya 0.1 token accounting, deterministic reusable chunk
+planning, composition/throughput benchmarks, stable decision primitives, and the
+conservative context-reduction `filter` primitive. See
 [`docs/laya-capabilities.md`](docs/laya-capabilities.md) and
-[`docs/token-efficiency.md`](docs/token-efficiency.md).
+[`docs/token-efficiency.md`](docs/token-efficiency.md), plus
+[`docs/filtering.md`](docs/filtering.md).
 
 This is alpha software. Laya decisions are probabilistic signals, not authorization,
 safety, legal, medical, or financial judgments.
@@ -132,6 +134,30 @@ lock used by `decide`.
 
 The server does not read files: clients must provide bounded context.
 
+### `filter`
+
+`filter` accepts a criterion and ordered `{id, text}` candidates. It returns only
+retained candidates by default, which keeps rejected classification records out of
+the primary agent's context. Candidates are excluded only when Laya returns a
+binary negative result with confidence at or above the `rejection_threshold` (the
+default is `0.9`). Relevant, uncertain, oversized, and failed candidates are
+retained. Use `response_detail: "detailed"` for per-candidate diagnostics.
+
+```json
+{
+  "criterion": "Relevant to fixing player acceleration behavior",
+  "rejection_threshold": 0.9,
+  "candidates": [
+    {"id": "movement", "text": "player controller handles acceleration"},
+    {"id": "audio", "text": "audio mixer loads music"}
+  ]
+}
+```
+
+Filtering reports candidate reduction and serialized MCP payload sizes. Those are
+local MCP payload measurements, not Codex/Claude token savings. See
+[`docs/filtering.md`](docs/filtering.md) for the conservative policy and benchmarks.
+
 ## Configuration
 
 | Variable | Default | Meaning |
@@ -153,6 +179,9 @@ observation, not a general performance claim.
 - Codex CLI: [`docs/codex.md`](docs/codex.md)
 - Claude Code: [`docs/claude-code.md`](docs/claude-code.md)
 - Agent usage patterns: [`docs/coding-agents.md`](docs/coding-agents.md)
+- Evaluation results: [`docs/evaluation.md`](docs/evaluation.md)
+- Model comparison: [`docs/model-comparison.md`](docs/model-comparison.md)
+- Codex end-to-end evaluation: [`docs/codex-evaluation.md`](docs/codex-evaluation.md)
 
 ## Development
 
@@ -166,10 +195,14 @@ machine:
 ```bash
 python benchmarks/token_composition.py
 python benchmarks/token_efficiency.py --output /tmp/laya-token-efficiency.json
+python benchmarks/evaluate_milestone5.py --output evaluation/results/milestone5.json
 ```
 
 Unit and MCP integration tests use fake backends and do not load model weights. A
 real smoke test should be run on a compatible Apple Silicon Mac before release.
+The Milestones 5–6 quality evaluations are intentionally advisory; see
+[`docs/evaluation.md`](docs/evaluation.md) before using `filter` for automatic
+context exclusion.
 
 ## Design constraints
 
