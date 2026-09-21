@@ -108,6 +108,11 @@ class DecisionService:
     def __init__(self, backend: InferenceBackend) -> None:
         self._backend = backend
 
+    async def _ensure_loaded(self) -> None:
+        ensure_loaded = getattr(self._backend, "ensure_loaded", None)
+        if ensure_loaded is not None:
+            await ensure_loaded()
+
     async def decide(self, value: DecideInput) -> DecideResponse:
         request = _request(value, value.context)
         result = await self._backend.classify(request)
@@ -189,6 +194,9 @@ class DecisionService:
     ) -> BatchDecideResponse:
         started = perf_counter()
         prepared = self._prepare(items, shared_context, confidence_threshold)
+        # Exact token preflight requires the resident tokenizer. The lazy facade
+        # loads it once here; direct backends simply have no lifecycle hook.
+        await self._ensure_loaded()
         results_by_id: dict[str, BatchItemResult] = {}
         valid: list[_PreparedDecision] = []
 

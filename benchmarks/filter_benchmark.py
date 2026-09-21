@@ -141,10 +141,12 @@ async def run(model: str, local_files_only: bool, counts: tuple[int, ...]) -> di
         rows.append({"count": count, **await measure_filter(filters, criterion, items, ResponseDetail.COMPACT)})
         if count == 100:
             rows.append({"count": count, **await measure_filter(filters, criterion, items, ResponseDetail.DETAILED)})
+    capabilities = backend.info().capabilities
+    assert capabilities is not None
     return {
         "model": model,
         "initialization_ms": round(initialization_ms, 3),
-        "max_total_tokens": backend.info().capabilities.max_total_tokens,
+        "max_total_tokens": capabilities.max_total_tokens,
         "rows": rows,
     }
 

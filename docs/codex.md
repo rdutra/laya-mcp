@@ -25,7 +25,9 @@ The W8 model is selected here because it was faster and smaller than the FP16 AN
 baseline with identical measured Milestone 6 quality. This is an explicit client
 configuration choice, not a change to laya-mcp's production default.
 
-The longer startup timeout accommodates cold Core ML initialization. Check the
+The longer tool timeout accommodates the first cold Core ML initialization. Process
+startup and tool discovery are fast because model loading is lazy; `info` initially
+reports `initialization_state: "unloaded"`. Check the
 connection with `codex mcp list`, or use `/mcp` in the Codex TUI. The CLI also
 supports the equivalent registration command:
 
@@ -38,9 +40,10 @@ When using `codex mcp add`, edit the generated `config.toml` afterward if you ne
 the 90-second startup timeout, 120-second tool timeout, `required = true`, or
 `LAYA_MCP_LOCAL_FILES_ONLY`.
 
-The current default Codex MCP startup timeout is 10 seconds, which is too short for
-a cold local model load. Required servers use their configured startup timeout;
-optional-server catalog startup is separately governed by Codex's
+The current default Codex MCP startup timeout is 10 seconds, which is sufficient for
+the lazy process startup but does not cover a cold model load. Keep the per-tool
+timeout above the measured cold initialization. Required servers use their configured
+startup timeout; optional-server catalog startup is separately governed by Codex's
 `mcp_optional_startup_grace_ms` setting.
 
 ## Behavioral guidance
@@ -75,7 +78,8 @@ codex mcp get laya
 
 Then start a new Codex session and confirm that `info`, `decide`, `batch_decide`,
 and `filter` appear in the available MCP tools. Call `info` once to confirm the
-selected model and that initialization is `ready`.
+selected model and that initialization is initially `unloaded`; the first inference
+call changes it to `ready` after the cold load.
 
 For an explicit local-files-only setup, first start `laya-mcp` or run the model
 benchmark so the model artifact is cached, then set

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import os
 from typing import Mapping
 
-DEFAULT_MODEL = "aac6fef/laya-multilingual-coreml-ane"
+DEFAULT_MODEL = "aac6fef/laya-multilingual-coreml-ane-w8"
 _COMPUTE_UNITS = frozenset({"all", "cpu", "cpu_gpu", "cpu_ne"})
 _LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 
@@ -55,4 +55,3 @@ class Settings:
             compute_units=compute_units,
             log_level=log_level,
         )
-

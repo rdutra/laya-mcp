@@ -9,14 +9,20 @@ from threading import Lock
 @dataclass(frozen=True, slots=True)
 class MetricsSnapshot:
     initialization_ms: float
+    initialization_attempts: int
+    initialization_count: int
+    last_initialization_error: str | None
     inference_count: int
     inference_error_count: int
     last_inference_ms: float | None
 
 
 class InferenceMetrics:
-    def __init__(self, initialization_ms: float) -> None:
+    def __init__(self, initialization_ms: float, *, initialization_attempts: int = 1) -> None:
         self._initialization_ms = initialization_ms
+        self._initialization_attempts = initialization_attempts
+        self._initialization_count = 1
+        self._last_initialization_error: str | None = None
         self._inference_count = 0
         self._inference_error_count = 0
         self._last_inference_ms: float | None = None
@@ -37,6 +43,9 @@ class InferenceMetrics:
         with self._lock:
             return MetricsSnapshot(
                 initialization_ms=round(self._initialization_ms, 3),
+                initialization_attempts=self._initialization_attempts,
+                initialization_count=self._initialization_count,
+                last_initialization_error=self._last_initialization_error,
                 inference_count=self._inference_count,
                 inference_error_count=self._inference_error_count,
                 last_inference_ms=(

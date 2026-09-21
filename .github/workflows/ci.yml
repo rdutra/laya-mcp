@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install project and development tools
+        run: python -m pip install -e '.[dev]'
+      - name: Unit tests
+        run: python -m pytest -q
+      - name: Ruff
+        run: ruff check src tests benchmarks
+      - name: Mypy
+        run: mypy src benchmarks
+      - name: Dependency consistency
+        run: python -m pip check
+      - name: Build wheel
+        run: python -m build
+
+# Core ML model loading is intentionally not part of this job. Run the real-model
+# smoke and lifecycle benchmarks on Apple Silicon macOS as described in docs/release.md.

@@ -6,6 +6,10 @@ to determine whether the Milestone 5 relevance failures are caused primarily by
 the 96-token limit or by the decision models themselves. This is an evaluation
 report, not a production routing policy.
 
+The release-candidate default is now ANE W8. This is a compatibility, size, and
+latency choice based on the tested hardware and workload, not a claim that W8 is
+universally more accurate or faster.
+
 The official Laya-CoreML model table and model cards are the source of truth for
 model availability and compatibility:
 

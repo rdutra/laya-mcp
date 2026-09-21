@@ -7,14 +7,17 @@ public MCP API.
 
 ## Result in one sentence
 
-In eight clean A/B task pairs, Codex completed 7/8 tasks in both conditions and
-made **zero laya-mcp calls** in all 16 runs. The integration was discoverable and
-healthy, but the agent did not find a valuable use for it under this guidance and
-task mix. No primary-model savings can therefore be attributed to laya-mcp.
+In eight clean A/B task pairs (run before the Milestone 8 lazy lifecycle change),
+Codex completed 7/8 tasks in both conditions and made **zero laya-mcp calls** in all
+16 runs. The integration was discoverable and healthy, but the agent did not find a
+valuable use for it under this guidance and task mix. No primary-model savings can
+therefore be attributed to laya-mcp.
 
-The MCP-enabled condition was slower on average because each fresh Codex process
-paid the local model startup cost even when no tool was called. This is a per-process
-experiment artifact; a persistent interactive Codex session would amortize startup.
+The MCP-enabled condition was slower on average because the pre-Milestone-8 server
+eagerly paid local model startup per fresh Codex process even when no tool was called.
+The current release candidate no longer does that: process startup and `info` are
+lazy, while the first inference tool call pays the cold load. The task results remain
+historical and are not being rerun as part of release hardening.
 
 ## Conditions
 
@@ -78,9 +81,9 @@ tool ran, and the task-level differences are nondeterministic Codex trajectories
 This sample is not large enough to establish a token or latency effect.
 
 The B elapsed time includes approximately one resident-model initialization per
-Codex process even when Codex never calls a tool. This is the wrong deployment shape
-for production use; a long-lived Codex session should amortize it. It nevertheless
-matters for CLI startup UX.
+Codex process because this experiment used the pre-lazy server. That startup artifact
+does not describe the current lifecycle implementation; a current run would still
+be expected to show zero Laya calls and no demonstrated task-level savings.
 
 ## Per-task results
 
@@ -120,9 +123,13 @@ The runner records Codex command executions and simple search/read command proxi
 but these tasks mostly used direct shell reads and the model’s built-in repository
 context. These are proxies, not Codex token accounting.
 
-The explicit connectivity smoke test, separate from the A/B task suite, did call
-`info` once and confirmed the W8 model, local inference, 96-token limit, and ready
-state. That proves configuration and discovery; it is not evidence of task value.
+The separate lifecycle connectivity smoke test used Codex with the W8 server and
+explicitly called `info → decide → info → decide → info`. `info` first reported
+`unloaded` with zero initialization attempts; the first decision returned successfully
+after 32,613.313 ms initialization; the next `info` reported `ready` with one
+initialization and one inference; the second decision reused the model (16.058 ms
+reported inference), and the final `info` showed two inferences with one
+initialization. This proves lifecycle configuration and reuse, not task value.
 
 ## Useful, neutral, unnecessary, and harmful calls
 

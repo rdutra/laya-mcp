@@ -15,6 +15,7 @@ from laya_mcp import __version__
 from laya_mcp.backend.base import InferenceBackend
 from laya_mcp.backend.laya_coreml import LayaCoreMLBackend
 from laya_mcp.config import Settings
+from laya_mcp.lifecycle import LazyBackendManager, LazyInferenceBackend
 from laya_mcp.schemas import (
     BatchDecideResponse,
     BatchDecisionInput,
@@ -50,8 +51,8 @@ def create_server(
 
     @asynccontextmanager
     async def lifespan(_: MCPServer[AppContext]) -> AsyncIterator[AppContext]:
-        backend = await factory(active_settings)
-        yield AppContext(backend=backend)
+        manager = LazyBackendManager(active_settings, factory)
+        yield AppContext(backend=LazyInferenceBackend(manager))
 
     server: MCPServer[AppContext] = MCPServer(
         "laya-mcp",
@@ -60,9 +61,10 @@ def create_server(
         instructions=(
             "Use decide for one bounded binary, choice, or ordered-score decision, and "
             "batch_decide for multiple decisions or filter for conservative candidate "
-            "selection. The server rejects any question that exceeds the resident "
-            "model's per-question token limit. Call info to inspect the active model "
-            "and limits."
+            "selection. Model loading is lazy: info and tool discovery do not load "
+            "weights; the first inference request initializes one resident model. "
+            "The server rejects any question that exceeds the model's per-question "
+            "token limit. Call info to inspect configured limits and lifecycle state."
         ),
         lifespan=lifespan,
     )
@@ -77,7 +79,7 @@ def create_server(
         ),
     )
     async def info(ctx: Context[AppContext]) -> ServerInfo:
-        """Report server, resident backend, model, platform, limits, and metrics."""
+        """Report server, configured model, lifecycle state, limits, and metrics."""
         return ctx.request_context.lifespan_context.backend.info()
 
     @server.tool(

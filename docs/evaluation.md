@@ -4,6 +4,11 @@ This milestone characterizes what the resident `aac6fef/laya-multilingual-coreml
 model is useful for. It does not change the public MCP API and does not tune the
 production service from a tiny sample.
 
+This is historical evidence for the FP16 ANE model named above. The release-candidate
+default is now the separately evaluated ANE W8 variant
+(`aac6fef/laya-multilingual-coreml-ane-w8`); results are not silently rewritten when
+the default changes.
+
 ## Method
 
 The evaluation data is inspectable in

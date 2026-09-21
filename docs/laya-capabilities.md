@@ -1,7 +1,7 @@
 # Laya-CoreML capabilities and the 96-token ANE budget
 
 This project targets `laya-coreml==0.1.0` and the default model
-`aac6fef/laya-multilingual-coreml-ane`. The measurements below are from one
+`aac6fef/laya-multilingual-coreml-ane-w8`. The measurements below are from one
 Apple Silicon development machine; they are not universal performance claims.
 
 ## What the model actually encodes
@@ -68,8 +68,8 @@ marked as approximate or unknown.
 
 | Model identifier | Context | Backend | Hardware | Approx. size | Backend compatibility |
 | --- | ---: | --- | --- | --- | --- |
-| `aac6fef/laya-multilingual-coreml-ane` | 96 | CPU + ANE, batch 1 | Apple Silicon with ANE | about 650 MB in the local cached bundle (not a release-size guarantee) | Yes; current default |
-| `aac6fef/laya-multilingual-coreml-ane-w8` | 96 | CPU + ANE, quantized variant | Apple Silicon with ANE | Not published | Yes, subject to the same `Agent` API |
+| `aac6fef/laya-multilingual-coreml-ane-w8` | 96 | CPU + ANE, quantized variant | Apple Silicon with ANE | about 532 MiB measured locally (not a release-size guarantee) | Yes; current default |
+| `aac6fef/laya-multilingual-coreml-ane` | 96 | CPU + ANE, batch 1 | Apple Silicon with ANE | about 649 MiB measured locally (not a release-size guarantee) | Yes; FP16 comparison baseline |
 | `aac6fef/laya-multilingual-coreml` | 1024 | CPU + GPU | Apple Silicon/macOS Core ML | Not published | Yes; larger context is attractive for later evaluation |
 | `aac6fef/laya-coreml` | 512 | CPU + GPU | Apple Silicon/macOS Core ML | Not published | Yes |
 | `aac6fef/laya-typed-decisions-coreml` | 1024 | CPU + GPU | Apple Silicon/macOS Core ML | Not published | Expected to fit the same `load`/`predict` abstraction; verify before enabling |

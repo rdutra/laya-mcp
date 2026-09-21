@@ -17,7 +17,7 @@ def main() -> None:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--local-files-only", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
-    import laya_coreml as laya
+    import laya_coreml as laya  # type: ignore[import-untyped]
 
     agent = laya.load(args.model, local_files_only=args.local_files_only)
     estimator = TokenBudgetEstimator(agent)
@@ -66,4 +66,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

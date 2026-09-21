@@ -2,8 +2,8 @@
 
 `laya-mcp` is a persistent local [Model Context Protocol](https://modelcontextprotocol.io/)
 server for bounded decisions powered by
-[Laya-CoreML](https://github.com/mizorewww/laya-coreml). It loads one Core ML model at
-process startup and keeps it resident for every MCP request.
+[Laya-CoreML](https://github.com/mizorewww/laya-coreml). It lazily loads one local
+Core ML model on the first inference request and keeps it resident for the process.
 
 ```text
 Codex CLI ──────┐
@@ -18,7 +18,8 @@ The core server contains no client-specific behavior. Client examples live under
 
 The current server provides:
 
-- one model load per server process through the MCP server lifespan;
+- fast MCP startup and tool discovery without model initialization;
+- one model load per server process, on first use, with serialized inference;
 - a stable generic `info`, `decide`, `batch_decide`, and conservative `filter` tool surface;
 - public `binary`, `choice`, and `ordered_score` decision semantics;
 - structured confidence, probabilities, token usage, and inference latency;
@@ -42,7 +43,7 @@ safety, legal, medical, or financial judgments.
 - macOS 15 or newer for the default ANE checkpoint
 - Python 3.12 or 3.13 (3.12 is the currently validated project environment)
 
-The default `aac6fef/laya-multilingual-coreml-ane` checkpoint supports a maximum of
+The default `aac6fef/laya-multilingual-coreml-ane-w8` checkpoint supports a maximum of
 96 total tokens across the question, options, and context. Call `info` rather than
 hard-coding that limit if you configure another model.
 
@@ -54,8 +55,8 @@ source .venv/bin/activate
 python -m pip install -e '.[dev]'
 ```
 
-On first startup, Laya-CoreML may download the configured Hugging Face model before
-loading it. Inference is local after the model is present. To require a cached model
+On the first inference request, Laya-CoreML may download the configured Hugging Face
+model before loading it. Inference is local after the model is present. To require a cached model
 or local model directory, set `LAYA_MCP_LOCAL_FILES_ONLY=true` or set
 `LAYA_MCP_MODEL` to that directory.
 
@@ -162,16 +163,17 @@ local MCP payload measurements, not Codex/Claude token savings. See
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `LAYA_MCP_MODEL` | `aac6fef/laya-multilingual-coreml-ane` | Hugging Face ID or local directory |
+| `LAYA_MCP_MODEL` | `aac6fef/laya-multilingual-coreml-ane-w8` | Hugging Face ID or local directory |
 | `LAYA_MCP_REVISION` | unset | Optional model revision |
 | `LAYA_MCP_LOCAL_FILES_ONLY` | `false` | Disable model downloads/lookups |
 | `LAYA_MCP_COMPUTE_UNITS` | model default | `all`, `cpu`, `cpu_gpu`, or `cpu_ne` |
 | `LAYA_MCP_LOG_LEVEL` | `INFO` | Structured stderr log level |
 
-The model is loaded before the MCP server accepts requests. Give clients a startup
-timeout comfortably above the model's measured initialization time on your machine.
-The original development machine measured about 30.35 seconds; that is a local
-observation, not a general performance claim.
+Model loading is lazy: process startup, tool discovery, and `info` do not load model
+weights. The first `decide`, `batch_decide`, or `filter` call pays the cold
+initialization cost; later calls reuse the resident model. The original development
+machine measured about 30–32 seconds for initialization and about 7–10 ms for warm
+inference. These are local observations, not universal performance claims.
 
 ## Client setup
 
@@ -181,6 +183,8 @@ observation, not a general performance claim.
 - Agent usage patterns: [`docs/coding-agents.md`](docs/coding-agents.md)
 - Evaluation results: [`docs/evaluation.md`](docs/evaluation.md)
 - Model comparison: [`docs/model-comparison.md`](docs/model-comparison.md)
+- Lifecycle measurements: [`docs/lifecycle.md`](docs/lifecycle.md)
+- Release checklist: [`docs/release.md`](docs/release.md)
 - Codex end-to-end evaluation: [`docs/codex-evaluation.md`](docs/codex-evaluation.md)
 
 ## Development
@@ -199,7 +203,8 @@ python benchmarks/evaluate_milestone5.py --output evaluation/results/milestone5.
 ```
 
 Unit and MCP integration tests use fake backends and do not load model weights. A
-real smoke test should be run on a compatible Apple Silicon Mac before release.
+real lifecycle smoke test should be run on a compatible Apple Silicon Mac before
+release; see [`docs/release.md`](release.md).
 The Milestones 5–6 quality evaluations are intentionally advisory; see
 [`docs/evaluation.md`](docs/evaluation.md) before using `filter` for automatic
 context exclusion.
@@ -212,6 +217,19 @@ context exclusion.
 - no implicit input truncation;
 - every decision remains bounded and independently token-validated;
 - backend and MCP transport remain separate so other local Laya backends can be added.
+
+## Evidence and limitations
+
+Demonstrated: local Core ML inference, the generic MCP decision API, API batching,
+deterministic token preflight, conservative failure handling, and MCP interoperability.
+The W8 default is supported by the tested hardware/workloads and is not a universal
+quality or latency guarantee.
+
+Experimental: `filter`, context-reduction workflows, and agent delegation patterns.
+Not demonstrated: automatic Codex or Claude token savings, safe silent context
+exclusion, improved coding-agent task quality, or calibrated confidence. See the
+negative results in [`docs/evaluation.md`](evaluation.md) and
+[`docs/codex-evaluation.md`](codex-evaluation.md).
 
 ## License
 

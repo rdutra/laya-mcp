@@ -7,7 +7,8 @@ from mcp import Client
 import pytest
 
 from laya_mcp.backend.laya_coreml import LayaCoreMLBackend
-from laya_mcp.config import Settings
+from laya_mcp.config import DEFAULT_MODEL, Settings
+from laya_mcp.lifecycle import LazyBackendManager
 from laya_mcp.server import create_server
 from tests.fakes import FakeAgent
 
@@ -61,6 +62,137 @@ async def test_public_tools_and_binary_decide_load_once() -> None:
     }
     assert load_count == 1
     assert agent.predict_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_info_is_available_without_loading_the_model() -> None:
+    agent = FakeAgent(max_length=96)
+    load_count = 0
+
+    async def factory(settings: Settings) -> LayaCoreMLBackend:
+        nonlocal load_count
+        load_count += 1
+        return LayaCoreMLBackend(agent=agent, settings=settings, initialization_ms=7.5)
+
+    server = create_server(Settings(model=DEFAULT_MODEL), backend_factory=factory)
+    async with Client(server, mode="legacy") as client:
+        result = await client.call_tool("info", {})
+
+    assert result.is_error is False
+    assert result.structured_content is not None
+    body = result.structured_content
+    assert body["model"] == DEFAULT_MODEL
+    assert body["initialization_state"] == "unloaded"
+    assert body["capabilities"]["max_total_tokens"] == 96
+    assert body["metrics"]["initialization_attempts"] == 0
+    assert load_count == 0
+
+
+@pytest.mark.asyncio
+async def test_failed_initialization_is_reported_and_next_request_retries() -> None:
+    agent = FakeAgent(max_length=96)
+    attempts = 0
+
+    async def factory(settings: Settings) -> LayaCoreMLBackend:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("model cache is unavailable")
+        return LayaCoreMLBackend(agent=agent, settings=settings, initialization_ms=7.5)
+
+    server = create_server(Settings(model="fake/model"), backend_factory=factory)
+    async with Client(server, mode="legacy") as client:
+        first = await client.call_tool(
+            "decide", {"context": "x", "question": "Is this valid?"}
+        )
+        failed_info = await client.call_tool("info", {})
+        second = await client.call_tool(
+            "decide", {"context": "x", "question": "Is this valid?"}
+        )
+        ready_info = await client.call_tool("info", {})
+
+    assert first.is_error is True
+    assert "unable to initialize model" in first.content[0].text
+    assert failed_info.structured_content is not None
+    assert failed_info.structured_content["initialization_state"] == "failed"
+    assert failed_info.structured_content["capabilities"] is None
+    assert failed_info.structured_content["metrics"]["initialization_attempts"] == 1
+    assert "model cache is unavailable" in failed_info.structured_content["metrics"][
+        "last_initialization_error"
+    ]
+    assert second.is_error is False
+    assert ready_info.structured_content is not None
+    assert ready_info.structured_content["initialization_state"] == "ready"
+    assert ready_info.structured_content["metrics"]["initialization_attempts"] == 2
+    assert ready_info.structured_content["metrics"]["initialization_count"] == 1
+    assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_first_use_initializes_once() -> None:
+    import asyncio
+
+    agent = FakeAgent(max_length=96)
+    attempts = 0
+
+    async def factory(settings: Settings) -> LayaCoreMLBackend:
+        nonlocal attempts
+        attempts += 1
+        await asyncio.sleep(0.01)
+        return LayaCoreMLBackend(agent=agent, settings=settings, initialization_ms=7.5)
+
+    manager = LazyBackendManager(Settings(model="fake/model"), factory)
+    loaded = await asyncio.gather(manager.ensure_loaded(), manager.ensure_loaded())
+
+    assert attempts == 1
+    assert loaded[0] is loaded[1]
+    assert manager.info().initialization_state == "ready"
+    assert manager.info().metrics.initialization_attempts == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        (
+            "batch_decide",
+            {
+                "shared_context": "movement bug",
+                "items": [{"id": "movement", "question": "Relevant?"}],
+            },
+        ),
+        (
+            "filter",
+            {
+                "criterion": "Relevant to movement",
+                "candidates": [{"id": "movement", "text": "movement controller"}],
+            },
+        ),
+    ],
+)
+async def test_batch_and_filter_initialize_on_first_use_and_then_reuse(
+    tool: str, arguments: dict[str, Any]
+) -> None:
+    agent = FakeAgent(max_length=96)
+    load_count = 0
+
+    async def factory(settings: Settings) -> LayaCoreMLBackend:
+        nonlocal load_count
+        load_count += 1
+        return LayaCoreMLBackend(agent=agent, settings=settings, initialization_ms=7.5)
+
+    server = create_server(Settings(model="fake/model"), backend_factory=factory)
+    async with Client(server, mode="legacy") as client:
+        before = await client.call_tool("info", {})
+        first = await client.call_tool(tool, arguments)
+        second = await client.call_tool(tool, arguments)
+
+    assert before.structured_content is not None
+    assert before.structured_content["initialization_state"] == "unloaded"
+    assert first.is_error is False
+    assert second.is_error is False
+    assert load_count == 1
+    assert agent.predict_calls == 2
 
 
 @pytest.mark.asyncio

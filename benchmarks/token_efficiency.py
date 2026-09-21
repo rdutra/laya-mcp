@@ -157,7 +157,7 @@ def run_strategy(
 
 
 def load_agent(model: str, local_files_only: bool) -> Any:
-    import laya_coreml as laya
+    import laya_coreml as laya  # type: ignore[import-untyped]
 
     started = perf_counter()
     agent = laya.load(model, local_files_only=local_files_only)

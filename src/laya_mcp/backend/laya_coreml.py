@@ -307,6 +307,9 @@ class LayaCoreMLBackend:
             ),
             metrics=RuntimeMetrics(
                 initialization_ms=metrics.initialization_ms,
+                initialization_attempts=metrics.initialization_attempts,
+                initialization_count=metrics.initialization_count,
+                last_initialization_error=metrics.last_initialization_error,
                 inference_count=metrics.inference_count,
                 inference_error_count=metrics.inference_error_count,
                 last_inference_ms=metrics.last_inference_ms,

@@ -10,7 +10,7 @@ the absolute path to the installed `laya-mcp` console script. A portable shape i
       "command": "/absolute/path/to/laya-mcp/.venv/bin/laya-mcp",
       "args": [],
       "env": {
-        "LAYA_MCP_MODEL": "aac6fef/laya-multilingual-coreml-ane"
+        "LAYA_MCP_MODEL": "aac6fef/laya-multilingual-coreml-ane-w8"
       }
     }
   }
@@ -21,11 +21,28 @@ See [`examples/generic-mcp/mcp.json`](../examples/generic-mcp/mcp.json). The exa
 configuration file name and timeout fields are client-specific.
 
 The client owns the server process. One process means one resident model. If a client
-stops and restarts the process, model initialization happens again.
+stops and restarts the process, model initialization happens again. Startup and tool
+discovery are lazy: the process does not load model weights until the first
+`decide`, `batch_decide`, or `filter` request. `info` is safe to call while the model
+is `unloaded` and reports static capacity metadata for known official model IDs.
+Unknown/custom model IDs report unavailable capability metadata until initialization.
 
-Use a startup timeout longer than the cold load observed on your machine. Once
-connected, call `info` to confirm the model, capacity, compute units, and initialization
-duration before routing work to `decide` or `batch_decide`.
+`initialization_state` is one of `unloaded`, `loading`, `ready`, or `failed`.
+Lifecycle metrics include `initialization_attempts`, successful
+`initialization_count`, `initialization_ms`, and a concise
+`last_initialization_error` when applicable. A failed initialization does not stop
+the MCP process; the next inference request may retry once.
+
+The first inference request performs one initialization attempt under a process-local
+lock. Concurrent first requests share that attempt, and successful later requests
+reuse the resident model. If initialization fails, the server remains alive and
+`info` reports `failed` plus a concise error; the next inference request may retry
+once. There is no internal retry loop.
+
+Use a normal process startup timeout and a tool/request timeout longer than the cold
+load observed on your machine. Once connected, call `info` to confirm the model,
+capacity, compute units, and unloaded lifecycle state before routing work to `decide`
+or `batch_decide`.
 
 ## Public tools
 
@@ -72,7 +89,7 @@ The normalized response contains:
   "needs_escalation": false,
   "details": {"probabilities": {"false": 0.09, "true": 0.91}},
   "backend": "laya-coreml",
-  "model": "aac6fef/laya-multilingual-coreml-ane",
+  "model": "aac6fef/laya-multilingual-coreml-ane-w8",
   "input_tokens": 40,
   "output_tokens": 0,
   "inference_latency_ms": 8.4
@@ -114,7 +131,7 @@ aggregates:
 ```json
 {
   "backend": "laya-coreml",
-  "model": "aac6fef/laya-multilingual-coreml-ane",
+  "model": "aac6fef/laya-multilingual-coreml-ane-w8",
   "failure_policy": "fail_fast",
   "response_detail": "compact",
   "items": [

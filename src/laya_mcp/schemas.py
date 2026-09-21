@@ -295,6 +295,9 @@ class ModelCapabilities(BaseModel):
 
 class RuntimeMetrics(BaseModel):
     initialization_ms: float = Field(ge=0.0)
+    initialization_attempts: int = Field(default=0, ge=0)
+    initialization_count: int = Field(default=0, ge=0)
+    last_initialization_error: str | None = None
     inference_count: int = Field(ge=0)
     inference_error_count: int = Field(ge=0)
     last_inference_ms: float | None = Field(default=None, ge=0.0)
@@ -309,5 +312,5 @@ class ServerInfo(BaseModel):
     platform: str
     python_version: str
     compute_units: str
-    capabilities: ModelCapabilities
+    capabilities: ModelCapabilities | None
     metrics: RuntimeMetrics
